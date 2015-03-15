@@ -2,8 +2,14 @@ CFLAGS = -Wall -Wextra -Wdeclaration-after-statement #-ansi -pedantic #-Wno-unus
 
 all: bwm
 
+bwm: bwm.o
+
+bwm.o: bwm.c
+
 install:
 	cp bwm $(HOME)/bin
+
+#install 0644 ..man..
 
 clean:
 	@rm -f *.o bwm

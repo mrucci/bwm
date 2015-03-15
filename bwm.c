@@ -15,6 +15,9 @@
 
 struct option longopts[] = {
    { "interface",   required_argument, 	NULL,         'i' },
+   { "format",   	required_argument, 	NULL,         'f' },
+   { "interval",   	required_argument, 	NULL,         't' },
+   { "num_samples",	required_argument, 	NULL,         'n' },
    { "download",   	no_argument, 		NULL,         'd' },
    { "upload", 		no_argument, 		NULL,         'u' },
    { 0, 			0, 					0, 			  0}
@@ -33,7 +36,28 @@ struct arguments
 
 	char foutname[128];
 	FILE* outf;
+
+	char format[32];
 };
+
+void checkValidFormat( char* format )
+{
+	if( format == NULL )
+	{
+		fprintf( stderr, "Format string is null\n" );
+		exit( EXIT_FAILURE );
+	}
+	else
+	{
+		if( format[0] != '%' )
+		{
+			fprintf( stderr, "Format string \"%s\" is not a valid format\n", format );
+			exit( EXIT_FAILURE );
+		}
+	
+	}
+	return;
+}
 
 void argumentsParse( struct arguments* args, int argc, char** argv )
 {
@@ -45,6 +69,15 @@ void argumentsParse( struct arguments* args, int argc, char** argv )
 		{
 			case 'i':
 				strcpy( args->iface, optarg );
+				break;
+			case 'f':
+				strcpy( args->format, optarg );
+				break;
+			case 't':
+				args->interval = atoi(optarg) * MSEC;
+				break;
+			case 'n':
+				args->nsamples = atoi(optarg);
 				break;
 			case 'd':
 				args->direction = 0;
@@ -87,6 +120,8 @@ void argumentsCheck( struct arguments* args )
 		exit( EXIT_FAILURE );
 	}
 
+	checkValidFormat( args->format );
+
 
 	sprintf( args->fname, "/sys/class/net/%s/statistics/%s_bytes", args->iface, args->direction ? "tx" : "rx" );
 	/*strcpy( args->fname, "/sys/class/net/eth0/statistics/rx_bytes" ); */
@@ -99,33 +134,35 @@ void argumentsCheck( struct arguments* args )
 	args->f = fopen( args->fname, "r" );
 	if( args->f == NULL )
 	{
-		fprintf( stderr, "Cannot open input files: \n[rx] %s \n", args->fname );
+		fprintf( stderr, "Cannot open input file: \n%s\n", args->fname );
 		exit( EXIT_FAILURE );
 	}
 
-	/* args->outf = fopen( foutname, "w" ); */
+	//output is alway stdout.  If you want file output, just redirect.
+	//args->outf = fopen( foutname, "w" );
 	if( args->outf == NULL )
 	{
-		fprintf( stderr, "Cannot open output files: \n[rx] %s \n", args->foutname );
+		fprintf( stderr, "Cannot open output file: \n%s\n", args->foutname );
 		exit( EXIT_FAILURE );
 	}
-
-
 
 }
 
 void argumentsSetDefault( struct arguments* args )
 {
-	/* default values: 2 seconds window average with 20 samples every 0.1 sec */
+	/* default values: 
+	 * poll every 100msec (0.1 sec) and make a window average of 20 samples (2 seconds window) */
 	args->interval = 100 * MSEC;
 	args->nsamples = 20;
 
 	strcpy( args->iface, "eth0" );
 	args->direction = 0; //received
 
-	//strcpy( args->foutname, "/tmp/rx-kBps" );
+	strcpy( args->foutname, "stdout" );
 	args->outf = stdout;
 
+	strcpy( args->format, "%3.0f");
+	//fprintf( args->outf, "%3.0f\n", rxkBps );
 }
 
 long timevalSubtract(struct timeval* x, struct timeval* y )
@@ -165,7 +202,7 @@ int main( int argc, char** argv )
 
 	//fprintf( stderr, "[monitoring interface %s in %s]\n", args->iface, args->direction ? "upload" : "download" );
 
-  	rxb = malloc( args->nsamples * sizeof(long) );
+	rxb = malloc( args->nsamples * sizeof(long) );
 
 
 	//==============================================
@@ -215,14 +252,13 @@ int main( int argc, char** argv )
 		t1.tv_sec  = t2.tv_sec;
 		t1.tv_usec = t2.tv_usec;
 
-		//printf( " args->interval: %ld usec\n", realInterval );
-
 		rxBps = rxaverage * ((float)SEC / (float)realInterval);
 		rxkBps = rxBps / 1024.0f;
 
-		//printf( "U: %5.2fkBps D: %5.2fkBps\n", txkBps, rxkBps );
-		fseek( args->outf, 0, SEEK_SET );
-		fprintf( args->outf, "%3.0f\n", rxkBps );
+		//fseek( args->outf, 0, SEEK_SET );
+		fprintf( args->outf, args->format, rxkBps );
+		fprintf( args->outf, "\n" );
+		fflush(  args->outf );
 	}
 
 	printf( "\n" );
